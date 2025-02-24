@@ -1,34 +1,50 @@
-import axios from "axios";
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "redis";
 
-export async function GET(){
-    return NextResponse.json("Hello")
+const client = createClient();
+client.on("error", (err) => console.log("Redis Client Error", err));
+
+async function connectRedis() {
+    if (!client.isOpen) {
+        await client.connect();
+    }
 }
 
-export async function POST(req: NextRequest) {
-    try {
-        const body = await req.json();
-        const { method_type } = body;
+export async function GET(){
+    return NextResponse.json("Hello from eth")
+}
 
-        if (!method_type) {
+export async function POST(req:NextRequest) {
+    
+    try {
+        await connectRedis();
+        
+        const body = await req.json();
+        const { chain , jsonrpc , id, method, params } = body;
+
+        if (!chain || !jsonrpc || !id || !method ) {
             console.log("Invalid inputs, check the inputs");
             return NextResponse.json(
                 { message: "Invalid inputs" },
                 { status: 411 }
             );
         }
-        // Corrected URL formatting
-        const response = await axios.get(`http://localhost:3000/api/ethereum/eth_blockNumber?method_type=eth_blockNumber`);
-        console.log(response)
+
+        // Push the request data to Redis queue
+        await client.lPush("ethereum", JSON.stringify({body}));
+
         return NextResponse.json({
             success: true,
-            data: response.data // Extract the actual response data
+            message: "Request has been queued successfully."
         });
+
     } catch (err) {
         console.error("Something went wrong", err);
         return NextResponse.json(
-            { error: "An error occurred while fetching your data" },
+            { error: "An error occurred while processing your request" },
             { status: 500 }
         );
     }
+
+
 }
