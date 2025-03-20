@@ -10,19 +10,26 @@ async function connectRedis() {
     }
 }
 
-export async function GET(){
-    return NextResponse.json("Hello from eth")
+// Utility function to wait for webhook data with retries
+async function getWebhookDataWithRetry(retries = 5, delay = 2000) {
+    await connectRedis();
+
+        const webhookResponse = await client.get("webhook_data");
+
+        if (webhookResponse) {
+            return JSON.parse(webhookResponse);
+        }
+    return null;
 }
 
-export async function POST(req:NextRequest) {
-    
+export async function POST(req: NextRequest) {
     try {
         await connectRedis();
-        
-        const body = await req.json();
-        const { chain , jsonrpc , id, method, params } = body;
 
-        if (!chain || !jsonrpc || !id || !method ) {
+        const body = await req.json();
+        const { chain, jsonrpc, id, method, network, params } = body;
+
+        if (!chain || !jsonrpc || !id || !method || !network) {
             console.log("Invalid inputs, check the inputs");
             return NextResponse.json(
                 { message: "Invalid inputs" },
@@ -30,17 +37,22 @@ export async function POST(req:NextRequest) {
             );
         }
 
-        // Push the request data to Redis queue
-        const answer = await client.lPush("ethereum", JSON.stringify({body}));
-        if(!answer){
+        await client.lPush("ethereum", JSON.stringify({ body }));
+
+        // Poll for webhook data with retries
+        const webhookResponse = await getWebhookDataWithRetry();
+
+        if (!webhookResponse) {
             return NextResponse.json({
                 success: false,
-                message:"Error while getting your answer"
-            })
+                message: "Webhook response not available yet. Please retry."
+            });
         }
+
         return NextResponse.json({
             success: true,
-            message: "Request has been queued successfully."
+            message: "Request processed successfully.",
+            response: webhookResponse
         });
 
     } catch (err) {
@@ -50,6 +62,4 @@ export async function POST(req:NextRequest) {
             { status: 500 }
         );
     }
-
-
 }

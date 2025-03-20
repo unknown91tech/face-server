@@ -1,22 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "redis";
 
+const client = createClient();
+client.on("error", (err) => console.log("Redis Client Error", err));
+
+async function connectRedis() {
+    if (!client.isOpen) {
+        await client.connect();
+    }
+}
 
 export async function POST(req: NextRequest) {
     try {
-        const body = await req.json(); // Parse JSON body
-        // console.log(body)
-        if(body.success===false){
-            console.log("Error in the data recieved, check your inputs once", body.error);
+        await connectRedis();
+        const body = await req.json();
+
+        if (body.success === false) {
+            console.log("Error in the data received", body.error);
             return NextResponse.json({
-                success:false,
+                success: false,
                 message: body.error
-            })
+            });
         }
-        console.log("Received data:", body);
 
-        // Process the data as needed (e.g., save to a database, trigger another service, etc.)
+        await client.set("webhook_data", JSON.stringify(body));
 
-        return NextResponse.json({ message: "Data received successfully", data: body }, { status: 200 });
+        // Confirm the data has been stored
+        const storedData = await client.get("webhook_data");
+        console.log("Stored Webhook Data:", storedData);  // Add this log to verify in the console
+
+        return NextResponse.json({ 
+            message: "Data received successfully", 
+            data: body 
+        }, { status: 200 });
     } catch (error) {
         console.error("Error processing request:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
