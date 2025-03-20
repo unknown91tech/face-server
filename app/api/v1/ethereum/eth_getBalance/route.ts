@@ -31,8 +31,13 @@ export async function POST(req:NextRequest) {
         }
 
         // Push the request data to Redis queue
-        await client.lPush("ethereum", JSON.stringify({body}));
-
+        const answer = await client.lPush("ethereum", JSON.stringify({body}));
+        if(!answer){
+            return NextResponse.json({
+                success: false,
+                message:"Error while getting your answer"
+            })
+        }
         return NextResponse.json({
             success: true,
             message: "Request has been queued successfully."
